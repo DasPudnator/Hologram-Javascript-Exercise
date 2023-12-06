@@ -1,22 +1,62 @@
 class UsageParser {
-    static #PROCESS_HEX = `6`
-    static #PROCESS_EXTENDED = `4`
+    /** [PRIVATE] parsingMethods
+     *  This array represents the available methods for parsing inputs. If you want to add additional parsing methods, DO NOT modify the parse/parseSingle methods.
+     *  Add a new parsing method here with the following properties:
+     *  Name {string}: What is it called? used for debugging
+     *  isValid {function(data): boolean}: Return false if this data is not formatted correctly. Data can be assumed to be non-null.
+     *  applyIf: {function(id): boolean}: Return true if, for the given id, you would want this to be your method of choice.
+     *  process: {function(id, data): object}: How to handle the data, use the formatOutput Method to make sure the object satisfies formatting standards
+     * 
+     *  Note: 
+     *  methods are on a first-come, first-served method, so if 2 methods could match the same ID, it will take the first one it finds. 
+     *  As such, default should always be last.
+     */
+    static #parsingMethods = [
+        {   name: `HEX`,
+            applyIf: (id) => id.slice(-1) == `6`,
+            isValid: (data) => /^[0-9a-f]{24}$/.test(data),
+            process: (id, data) => {
+                // Parse hex sets into values
+                const mnc = parseInt(data.substring(0, 4), 16);
+                const bytes_used = parseInt(data.substring(4,8), 16);
+                const cellid = parseInt(data.substring(8,16), 16);
+                const ip = `${parseInt(data.substring(16,18), 16)}` +
+                           `.${parseInt(data.substring(18,20), 16)}` +
+                           `.${parseInt(data.substring(20,22), 16)}` +
+                           `.${parseInt(data.substring(22,24), 16)}`;
+        
+                return this.#formatOutput(id, mnc, bytes_used, undefined, cellid, ip);
+            }
+        },
+        {   name: `EXTENDED`,
+            applyIf: (id) => id.slice(-1) == `4`,
+            isValid: (data) => data.split(',').length == 4,
+            process: (id, data) => {
+                const [dmcc, mnc, bytes_used, cellid ] = data.split(',');
+                return this.#formatOutput(id, mnc, bytes_used, dmcc, cellid);
+            }
+        },
+        {   name: `DEFAULT`,
+            applyIf: (id) => true,
+            isValid: (data) => !isNaN(data),
+            process: (id, data) => this.#formatOutput(id, undefined, data)
+        }
+    ]
 
     /** parse
      *  Given an input or collection of inputs following the pattern <ID>,<Data>, parses the model into a more usable object
      * @param {string | string[]} input data to parse
-     * @returns an array of objects following the pattern {
+     * @returns {{
      *      id: number,
      *      dmcc: string | null,
      *      mnc: number | null,
      *      bytes_used: number | null,
      *      cellid: number | null,
      *      ip: string | null
-     * }
+     * }[]} input formatted into an array of clean objects
      * notes: 
      *  IP will ALWAYS be formatted correctly, otherwise it will be null.
-     *  invalid inputs will be returned as null, as will be fields.
-     */
+     *  invalid inputs will be returned as null, as well as any fields. */
     static parse(input) {
         if (Array.isArray(input)) {
             const output = [];
@@ -29,72 +69,68 @@ class UsageParser {
         return [this.#parseSingle(input)];
     }
 
-    
-
+    /** [PRIVATE] parseSingle
+     *  For a given input, generates a more user-friendly model using the system formatters
+     * @param {string} input text to parse 
+     * @returns {{
+     *      id: number,
+     *      dmcc: string | null,
+     *      mnc: number | null,
+     *      bytes_used: number | null,
+     *      cellid: number | null,
+     *      ip: string | null
+     * }}
+     *  IP will ALWAYS be formatted correctly, otherwise it will be null.
+     *  invalid inputs will be returned as null, as will any invalid fields. */
     static #parseSingle(input) {
-        var formattedInput = this.#validateInput(input);
-        if (!formattedInput.isValid)
+        if ((!typeof input) == `string`)
+            return null;
+        const firstCommaIx = input.indexOf(",");
+        if (firstCommaIx < 0) // No Comma, Bad Data
             return null;
 
-        switch (formattedInput.format) {
-            case this.#PROCESS_EXTENDED:
-                return this.#parseExtended(formattedInput.tokens);
-            case this.#PROCESS_HEX:
-                return this.#parseHex(formattedInput.tokens);
-            default:
-                return this.#parseBasic(formattedInput.tokens);
+        // Format input to values consumable by formatters and find the right formatter
+        const id = input.substr(0, firstCommaIx);
+        const data = input.substr(firstCommaIx + 1);
+        const formatter = this.#getFormatter(id);
+        if (!formatter.isValid(data))
+            return null;
+        
+        console.log(`Formatter ${formatter.name}: Data for ID: ${id} is valid`)
+        return formatter.process(id, data);
+    }
+
+    /** [PRIVATE] getFormatter
+     *  For a given id, find the formatter most suited to processing the field
+     * @param {string} id - record ID to match for formatter pattern
+     * @returns a formatter object that best serves this id
+     */
+    static #getFormatter(id) {
+        for(let x = 0; x < this.#parsingMethods.length; x++) {
+            const formatter = this.#parsingMethods[x];
+            if (formatter.applyIf(id)) 
+                return formatter;
         }
+        return null;
     }
 
-    /**
-     * 
-     * @param {string[]} tokens - data to parse
+    /** [PRIVATE] formatOutput
+     *  Generates a consisten format matching output recommendations for the parser
+     * @param {string | number | null} id 
+     * @param {string | number | null} mnc 
+     * @param {string | number | null} bytes_used 
+     * @param {string | null} dmcc 
+     * @param {string | number | null} cellid 
+     * @param {string | null} ip 
+     * @returns {{
+     *      id: number,
+    *      dmcc: string | null,
+    *      mnc: number | null,
+    *      bytes_used: number | null,
+    *      cellid: number | null,
+    *      ip: string | null
+    * }} object with the inputs mapped to the same-named field, cleaned up to handle bad numbers or other input fumbles.
      */
-    static #parseBasic(tokens) {
-        const [id, bytes_used] = tokens;
-        return this.#formatOutput(id, undefined, bytes_used);
-    }
-
-    /**
-     * 
-     * @param {string[]} tokens - data to parse
-     */
-    static #parseHex(tokens) {
-        const id = tokens[0];
-
-        // Validate we get exactly 24 hex characters (nibbles)
-        const valid = /^[0-9a-f]{24}$/.test(tokens[1]);
-        if (!valid)
-            return null;
-        const nibbles = tokens[1];
-
-        // Parse hex sets into values
-        const mnc = parseInt(nibbles.substring(0, 4), 16);
-        const bytes_used = parseInt(nibbles.substring(4,8), 16);
-        const cellid = parseInt(nibbles.substring(8,16), 16);
-        const ip = `${parseInt(nibbles.substring(16,18), 16)}` +
-                   `.${parseInt(nibbles.substring(18,20), 16)}` +
-                   `.${parseInt(nibbles.substring(20,22), 16)}` +
-                   `.${parseInt(nibbles.substring(22,24), 16)}`;
-
-        return this.#formatOutput(id, mnc, bytes_used, undefined, cellid, ip);
-    }
-
-    /**
-     * 
-     * @param {string[]} tokens - data to parse
-     */
-    static #parseExtended(tokens) {
-        const [   
-            id,
-            dmcc,
-            mnc,
-            bytes_used,
-            cellid
-        ] = tokens;
-        return this.#formatOutput(id, mnc, bytes_used, dmcc, cellid);
-    }
-
     static #formatOutput(id, mnc, bytes_used, dmcc, cellid, ip) {
         // IP should be [0-256].[0-256].[0-256].[0-256]
         const isValidIp = ip == null ? false :
@@ -109,29 +145,6 @@ class UsageParser {
             cellid: isNaN(cellid) ? null : Number(cellid),
             ip: isValidIp ? ip : null
         }
-    }
-
-    /** validateInput
-     *  Analyzes data input and determines whether the data is valid and, if it is, determines how we should handle the data.
-     * @param {*} input 
-     * @returns 
-     */
-    static #validateInput(input) {
-        const response = {
-            isValid: false,
-            format: ``,
-            tokens: null
-        }
-        if ((!typeof input) == `string`)
-            return response;
-
-        response.tokens = input.split(`,`);
-        if (response.tokens.length < 2)
-            return response;
-
-        response.format = response.tokens[0].slice(-1);
-        response.isValid = true;
-        return response;
     }
 }
 
