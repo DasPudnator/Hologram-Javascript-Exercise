@@ -9,8 +9,7 @@ class UsageParser {
      * 
      *  Note: 
      *  methods are on a first-come, first-served method, so if 2 methods could match the same ID, it will take the first one it finds. 
-     *  As such, default should always be last.
-     */
+     *  As such, default should always be last. */
     static #parsingMethods = [
         {   name: `HEX`,
             applyIf: (id) => id.slice(-1) == `6`,
@@ -56,7 +55,7 @@ class UsageParser {
      * }[]} input formatted into an array of clean objects
      * notes: 
      *  IP will ALWAYS be formatted correctly, otherwise it will be null.
-     *  invalid inputs will be returned as null, as well as any fields. */
+     *  Invalid inputs will be returned as null, as well as any fields. */
     static parse(input) {
         if (Array.isArray(input)) {
             const output = [];
@@ -81,7 +80,7 @@ class UsageParser {
      *      ip: string | null
      * }}
      *  IP will ALWAYS be formatted correctly, otherwise it will be null.
-     *  invalid inputs will be returned as null, as will any invalid fields. */
+     *  Invalid inputs will be returned as null, as will any invalid fields. */
     static #parseSingle(input) {
         if ((!typeof input) == `string`)
             return null;
@@ -103,8 +102,7 @@ class UsageParser {
     /** [PRIVATE] getFormatter
      *  For a given id, find the formatter most suited to processing the field
      * @param {string} id - record ID to match for formatter pattern
-     * @returns a formatter object that best serves this id
-     */
+     * @returns a formatter object that best serves this id */
     static #getFormatter(id) {
         for(let x = 0; x < this.#parsingMethods.length; x++) {
             const formatter = this.#parsingMethods[x];
@@ -124,15 +122,14 @@ class UsageParser {
      * @param {string | null} ip 
      * @returns {{
      *      id: number,
-    *      dmcc: string | null,
-    *      mnc: number | null,
-    *      bytes_used: number | null,
-    *      cellid: number | null,
-    *      ip: string | null
-    * }} object with the inputs mapped to the same-named field, cleaned up to handle bad numbers or other input fumbles.
-     */
+     *      dmcc: string | null,
+     *      mnc: number | null,
+     *      bytes_used: number | null,
+     *      cellid: number | null,
+     *      ip: string | null
+     * }} object with the inputs mapped to the same-named field, cleaned up to handle bad numbers or other input fumbles. */
     static #formatOutput(id, mnc, bytes_used, dmcc, cellid, ip) {
-        // IP should be [0-256].[0-256].[0-256].[0-256]
+        // IP should be [0-255].[0-255].[0-255].[0-255]
         const isValidIp = ip == null ? false :
                     /(\b25[0-5]|\b2[0-4][0-9]|\b[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}/.test(ip);
                 
